@@ -1,3 +1,6 @@
 ultralytics==8.2.87
 transformers==4.44.2
+sentencepiece==0.2.0
+accelerate==0.34.0
+protobuf==5.28.0
 git+https://github.com/Gothos/diffusers.git@flux-inpaint

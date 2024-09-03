@@ -65,7 +65,7 @@ class FaceRandomizerPipeline:
             strength=0.8
         )
 
-        return output
+        return output.images[0]
 
     def __call__(self, image_path):
         image = Image.open(image_path)
