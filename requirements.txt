@@ -1,0 +1,2 @@
+ultralytics==8.2.87
+git+https://github.com/Gothos/diffusers.git@flux-inpaint
