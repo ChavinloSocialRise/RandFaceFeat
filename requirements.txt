@@ -1,2 +1,3 @@
 ultralytics==8.2.87
+transformers==4.44.2
 git+https://github.com/Gothos/diffusers.git@flux-inpaint
