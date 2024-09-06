@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from diffusers import FluxInpaintPipeline, AutoPipelineForInpainting
+from diffusers import AutoPipelineForInpainting
 from PIL import Image, ImageDraw, ImageFilter
 from ultralytics import YOLO
 
@@ -14,8 +14,9 @@ class FaceRandomizerPipeline:
         print("Loading YOLO model...")
         self.face_detector = YOLO("yolov8l.pt")
         print("Loading Flux model...")
-        self.image_gen = AutoPipelineForInpainting.from_pretrained("SG161222/RealVisXL_V4.0")
+        self.image_gen = AutoPipelineForInpainting.from_pretrained("SG161222/RealVisXL_V5.0")
         self.image_gen.to("cuda")
+        self.image_gen.enable_xformers_memory_efficient_attention()
         self.image_gen.enable_model_cpu_offload()
         print("Flux model loaded")
 
@@ -68,14 +69,14 @@ class FaceRandomizerPipeline:
     
     def stage2(self, image: Image.Image, mask: Image.Image):
         output = self.image_gen(
-            prompt="instagram photo, portrair photo of a 20 y.o girl, perfect face, natural skin, looking to the left",
+            prompt="instagram photo, portrair photo of a 20 y.o girl, perfect face, natural skin, looking to the camera",
             negative_prompt="octane render, render, drawing, anime, bad photo, bad photography, worst quality, low quality, blurry, bad teeth, deformed teeth, deformed lips, bad anatomy, bad proportions, deformed iris, deformed pupils, deformed eyes, bad eyes, deformed face, ugly face, bad face, deformed hands, bad hands, fused fingers, morbid, mutilated, mutation, disfigured",
             image=image,
             mask_image=mask,
             strength=0.4,
             height=image.height,
             width=image.width,
-            num_inference_steps=50
+            num_inference_steps=5
         )
 
         return output.images[0]
