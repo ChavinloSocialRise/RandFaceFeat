@@ -1,0 +1,3 @@
+[submodule "inswapper"]
+	path = inswapper
+	url = https://github.com/haofanwang/inswapper
