@@ -13,10 +13,6 @@ RUN pip install ultralytics==8.2.87 transformers==4.44.2 sentencepiece==0.2.0 ac
 
 RUN pip3 install -U xformers --index-url https://download.pytorch.org/whl/cu121
 
-RUN touch inswapper/__init__.py
-RUN pip install -r inswapper/requirements.txt
-
 RUN wget https://github.com/ignaciohrdz/yolo-face-parts-detector/releases/download/v2.0.0/yolov8m.pt -O yolov8m.pt
-RUN wget https://github.com/facefusion/facefusion-assets/releases/download/models/inswapper_128.onnx -O inswapper/inswapper_128.onnx
 
-CMD ["python", "-u", "multigen/handler.py"]
+CMD ["python", "-u", "swap/handler.py"]

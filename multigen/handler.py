@@ -18,5 +18,5 @@ def handler(job):
 if __name__ == "__main__":
     global pipeline
     pipeline = EndpointOnePipeline()
-    runpod.serverless.start({"handler": run})
+    runpod.serverless.start({"handler": handler})
     

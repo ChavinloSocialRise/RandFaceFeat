@@ -81,8 +81,7 @@ class FaceRandomizerPipeline:
 
         return output.images[0]
 
-    def __call__(self, image_path):
-        image = Image.open(image_path)
+    def __call__(self, image: Image.Image):
         image = image.resize((closest_divisible_by_8(image.width), closest_divisible_by_8(image.height)))
         print("Stage 1...")
         mask = self.stage1(image.copy())
@@ -94,7 +93,7 @@ class FaceRandomizerPipeline:
     
 def main():
     pipeline = FaceRandomizerPipeline()
-    x = pipeline(image_path)
+    x = pipeline(Image.open(image_path))
 
 if __name__ == "__main__":
     main()
