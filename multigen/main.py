@@ -18,7 +18,7 @@ POSES_PROMPT = "instagram photo, selfie photo of a 20 y.o girl, perfect face, na
 
 NEGATIVE_PROMPT = "octane render, render, drawing, anime, bad photo, bad photography, worst quality, low quality, blurry, bad teeth, deformed teeth, deformed lips, bad anatomy, bad proportions, deformed iris, deformed pupils, deformed eyes, bad eyes, deformed face, ugly face, bad face, deformed hands, bad hands, fused fingers, morbid, mutilated, mutation, disfigured"
 
-INSWAPPER_PATH = "inswapper/inswapper_128.onnx"
+INSWAPPER_PATH = "inswapper_128.onnx"
 
 ####
 
@@ -88,7 +88,7 @@ class EndpointOnePipeline:
             codeformer_net=self.codeformer_net,
             device=self.device
         )
-        return Image.fromarray(cv2.cvtColor(restored_array, cv2.COLOR_BGR2RGB))
+        return Image.fromarray(restored_array)
 
     def __call__(self) -> list[Image.Image]:
         base_face = self.generateFace()
