@@ -1,3 +1,6 @@
 [submodule "inswapper"]
 	path = inswapper
 	url = https://github.com/haofanwang/inswapper
+[submodule "CodeFormer"]
+	path = CodeFormer
+	url = https://huggingface.co/spaces/sczhou/CodeFormer
