@@ -95,7 +95,6 @@ class FaceRandomizerPipeline:
 def main():
     pipeline = FaceRandomizerPipeline()
     x = pipeline(image_path)
-    x.save(f"{image_path}_new.png")
 
 if __name__ == "__main__":
     main()

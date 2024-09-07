@@ -72,8 +72,6 @@ class EndpointOnePipeline:
             num_inference_steps=35,
             num_images_per_prompt=4
         )
-        for i in range(len(output.images)):
-            output.images[i].save(f"pose_{i}.png")
         return output.images
     
     def restore_face(self, image: Image.Image) -> Image.Image:
@@ -106,8 +104,6 @@ class EndpointOnePipeline:
 def main():
     pipeline = EndpointOnePipeline()
     results = pipeline()
-    for i in range(len(results)):
-        results[i].save(f"result_{i}.png")
 
 if __name__ == "__main__":
     main()
