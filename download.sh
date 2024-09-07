@@ -1,2 +1,2 @@
 wget https://github.com/ignaciohrdz/yolo-face-parts-detector/releases/download/v2.0.0/yolov8m.pt -O yolov8m.pt
-wget https://github.com/facefusion/facefusion-assets/releases/download/models/inswapper_128.onnx -O inswapper_128.onnx
+wget https://github.com/facefusion/facefusion-assets/releases/download/models/inswapper_128.onnx -O inswapper/inswapper_128.onnx
