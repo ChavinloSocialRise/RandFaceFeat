@@ -10,7 +10,7 @@ def handler(job):
     
     job_input = job['input']
     b64_image = job_input.get('image', '')
-    image = Image.open(BytesIO(base64.b64decode(b64_image)))
+    image = Image.open(BytesIO(base64.b64decode(b64_image))).convert("RGB")
 
     results = pipeline(image)
     buffered = BytesIO()

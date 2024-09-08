@@ -1,99 +1,94 @@
 import torch
 import numpy as np
-from diffusers import AutoPipelineForInpainting
-from PIL import Image, ImageDraw, ImageFilter
-from ultralytics import YOLO
+import sys
+import os
+import cv2
+from diffusers import StableDiffusionXLPipeline, DPMSolverSDEScheduler
+from PIL import Image
 
-image_path = "test.jpg"
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def closest_divisible_by_8(x):
-    return x- x%8
+from inswapper.swapper import *
+from inswapper.restoration import *
+
+# PARAMETERS
+
+FACE_PROMPT = "instagram photo, portrait photo of a 20 y.o girl, perfect face, natural skin, looking to the camera"
+POSES_PROMPT = "instagram photo, selfie photo of a 20 y.o girl, perfect face, natural skin, looking to the camera, mirror selfie, random pose"
+
+NEGATIVE_PROMPT = "octane render, render, drawing, anime, bad photo, bad photography, worst quality, low quality, blurry, bad teeth, deformed teeth, deformed lips, bad anatomy, bad proportions, deformed iris, deformed pupils, deformed eyes, bad eyes, deformed face, ugly face, bad face, deformed hands, bad hands, fused fingers, morbid, mutilated, mutation, disfigured"
+
+INSWAPPER_PATH = "inswapper_128.onnx"
+
+####
 
 class FaceRandomizerPipeline:
     def __init__(self):
-        print("Loading YOLO model...")
-        self.face_detector = YOLO("yolov8l.pt")
-        print("Loading Flux model...")
-        self.image_gen = AutoPipelineForInpainting.from_pretrained("SG161222/RealVisXL_V5.0")
+        self.image_gen = StableDiffusionXLPipeline.from_pretrained(
+            "SG161222/RealVisXL_V5.0",
+            torch_dtype=torch.float16,
+            use_safetensors=True
+        )
+        self.image_gen.scheduler = DPMSolverSDEScheduler.from_config(self.image_gen.scheduler.config)
+        self.image_gen.safety_checker = None
         self.image_gen.to("cuda")
         self.image_gen.enable_xformers_memory_efficient_attention()
-        self.image_gen.enable_model_cpu_offload()
-        print("Flux model loaded")
 
-    def stage1(self, image: Image.Image):
-        img_array = np.array(image)
+        # Face restoration initialization
+        check_ckpts()
+        self.upsampler = set_realesrgan()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.codeformer_net = ARCH_REGISTRY.get("CodeFormer")(
+            dim_embd=512,
+            codebook_size=1024,
+            n_head=8,
+            n_layers=9,
+            connect_list=["32", "64", "128", "256"]
+        ).to(self.device)
+        ckpt_path = "CodeFormer/CodeFormer/weights/CodeFormer/codeformer.pth"
+        checkpoint = torch.load(ckpt_path)["params_ema"]
+        self.codeformer_net.load_state_dict(checkpoint)
+        self.codeformer_net.eval()
 
-        results = self.face_detector(img_array, agnostic_nms=True, verbose=True)[0]
-        
-        boxes = results.boxes.xyxy.cpu().numpy()
-        class_ids = results.boxes.cls.cpu().numpy()
-        formatted_boxes = [(int(box[0]), int(box[1]), int(box[2]), int(box[3]), int(class_id)) for box, class_id in zip(boxes, class_ids)]
-        
-        # Create a grayscale mask instead of binary
-        mask = Image.new('L', image.size, 0)
-        draw = ImageDraw.Draw(mask)
-
-        for box in formatted_boxes:
-            draw.rectangle(box[:4], fill=255)
-
-        left_eyebrow = None
-        right_eyebrow = None
-        nose = None
-
-        for box in formatted_boxes:
-            if box[4] == 3:
-                if left_eyebrow is None or box[0] < left_eyebrow[0]:
-                    left_eyebrow = box
-
-                if right_eyebrow is None or box[0] > right_eyebrow[0]:
-                    right_eyebrow = box
-
-            if box[4] == 1:
-                nose = box
-
-        print(left_eyebrow, right_eyebrow, nose)
-
-        left_point = (nose[0], left_eyebrow[3])
-        right_point = (nose[2], right_eyebrow[3])
-
-        draw.polygon([left_point, (nose[0], nose[3]), (left_eyebrow[0], left_eyebrow[3])], fill=255)
-        draw.polygon([right_point, (nose[2], nose[3]), (right_eyebrow[2], right_eyebrow[3])], fill=255)
-
-        # Apply Gaussian blur to soften the mask
-        blurred_mask = mask.filter(ImageFilter.GaussianBlur(radius=20))
-        
-        # Convert to binary mask
-        binary_mask = blurred_mask.point(lambda x: 0 if x < 128 else 255, '1')
-
-        return binary_mask
-    
-    def stage2(self, image: Image.Image, mask: Image.Image):
+    def generateFace(self) -> Image.Image:
         output = self.image_gen(
-            prompt="instagram photo, portrair photo of a 20 y.o girl, perfect face, natural skin, looking to the camera",
-            negative_prompt="octane render, render, drawing, anime, bad photo, bad photography, worst quality, low quality, blurry, bad teeth, deformed teeth, deformed lips, bad anatomy, bad proportions, deformed iris, deformed pupils, deformed eyes, bad eyes, deformed face, ugly face, bad face, deformed hands, bad hands, fused fingers, morbid, mutilated, mutation, disfigured",
-            image=image,
-            mask_image=mask,
-            strength=0.4,
-            height=image.height,
-            width=image.width,
-            num_inference_steps=5
+            prompt=FACE_PROMPT,
+            negative_prompt=NEGATIVE_PROMPT,
+            height=1024,
+            width=1024,
+            num_inference_steps=35
         )
 
+        output.images[0].save("face.png")
+
         return output.images[0]
-
-    def __call__(self, image: Image.Image):
-        image = image.resize((closest_divisible_by_8(image.width), closest_divisible_by_8(image.height)))
-        print("Stage 1...")
-        mask = self.stage1(image.copy())
-        print("Stage 2...")
-        output = self.stage2(image.copy(), mask)
-        print("Done")
-
-        return output
     
+    def restore_face(self, image: Image.Image) -> Image.Image:
+        img_array = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        restored_array = face_restoration(
+            img_array,
+            background_enhance=True,
+            face_upsample=True,
+            upscale=2,
+            codeformer_fidelity=0.5,
+            upsampler=self.upsampler,
+            codeformer_net=self.codeformer_net,
+            device=self.device
+        )
+        return Image.fromarray(restored_array)
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        base_face = self.generateFace()
+        base_image = image
+
+        result = process([base_face], base_image, -1, -1, INSWAPPER_PATH)
+        restored_result = self.restore_face(result)
+
+        return restored_result
+
 def main():
-    pipeline = FaceRandomizerPipeline()
-    x = pipeline(Image.open(image_path))
+    pipeline = EndpointOnePipeline()
+    results = pipeline(Image.open("img.png"))
 
 if __name__ == "__main__":
     main()
