@@ -3,8 +3,10 @@ import numpy as np
 import sys
 import os
 import cv2
-from diffusers import StableDiffusionXLPipeline, DPMSolverSDEScheduler
+from diffusers import StableDiffusionXLImg2ImgPipeline, DPMSolverSDEScheduler
+from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
 from PIL import Image
+from controlnet_aux import OpenposeDetector
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -13,18 +15,25 @@ from inswapper.restoration import *
 
 # PARAMETERS
 
-FACE_PROMPT = "instagram photo, portrait photo of a 20 y.o girl, perfect face, natural skin, looking to the camera"
-POSES_PROMPT = "instagram photo, selfie photo of a 20 y.o girl, perfect face, natural skin, looking to the camera, mirror selfie, random pose"
-
+#FACE_PROMPT = "instagram photo, portrait photo of a 20 y.o girl, perfect face, natural skin, looking to the camera"
+PROMPT = "instagram photo, selfie photo of a 20 y.o girl, perfect face, natural skin, looking to the camera, mirror selfie, random pose"
 NEGATIVE_PROMPT = "octane render, render, drawing, anime, bad photo, bad photography, worst quality, low quality, blurry, bad teeth, deformed teeth, deformed lips, bad anatomy, bad proportions, deformed iris, deformed pupils, deformed eyes, bad eyes, deformed face, ugly face, bad face, deformed hands, bad hands, fused fingers, morbid, mutilated, mutation, disfigured"
 
 INSWAPPER_PATH = "inswapper_128.onnx"
 
 ####
 
+def correction(image: Image.Image) -> Image.Image:
+    width, height = image.size
+    new_width = (width // 8) * 8
+    new_height = (height // 8) * 8
+    resized_image = image.resize((new_width, new_height), Image.ANTIALIAS).convert("RGB")
+    return resized_image
+
 class EndpointOnePipeline:
     def __init__(self):
-        self.image_gen = StableDiffusionXLPipeline.from_pretrained(
+        ## Standard Image Generator
+        self.image_gen = StableDiffusionXLImg2ImgPipeline.from_pretrained(
             "SG161222/RealVisXL_V5.0",
             torch_dtype=torch.float16,
             use_safetensors=True
@@ -33,6 +42,19 @@ class EndpointOnePipeline:
         self.image_gen.safety_checker = None
         self.image_gen.to("cuda")
         self.image_gen.enable_xformers_memory_efficient_attention()
+
+        ## Pose Conditioned Image Generator
+        self.controlnet_m = ControlNetModel.from_pretrained(
+            "xinsir/controlnet-openpose-sdxl-1.0",
+            torch_dtype=torch.float16
+        )
+
+        self.control_gen = StableDiffusionXLControlNetPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", controlnet=self.controlnet_m, torch_dtype=torch.float16
+        )
+        self.control_gen.enable_model_cpu_offload()
+
+        self.detector = OpenposeDetector.from_pretrained("lllyasviel/ControlNet")
 
         # Face restoration initialization
         check_ckpts()
@@ -50,60 +72,44 @@ class EndpointOnePipeline:
         self.codeformer_net.load_state_dict(checkpoint)
         self.codeformer_net.eval()
 
-    def generateFace(self) -> Image.Image:
-        output = self.image_gen(
-            prompt=FACE_PROMPT,
-            negative_prompt=NEGATIVE_PROMPT,
-            height=1024,
-            width=1024,
-            num_inference_steps=35
+    def generatePose(self, image: Image.Image) -> Image.Image:
+        openpose_image = self.detector(image)
+
+        poses = self.control_gen(
+            prompt = PROMPT,
+            negative_prompt = NEGATIVE_PROMPT,
+            height = image.height,
+            width = image.width,
+            num_inference_steps = 35,
+            controlnet_conditioning_scale = 0.5,
+            image = openpose_image
         )
 
-        output.images[0].save("face.png")
-
-        return output.images[0]
+        return poses[0]
     
-    def generatePoses(self) -> list[Image.Image]:
+    def refineImage(self, image: Image.Image) -> Image.Image:
         output = self.image_gen(
-            prompt=POSES_PROMPT,
-            negative_prompt=NEGATIVE_PROMPT,
-            height=1024,
-            width=768,
-            num_inference_steps=35,
-            num_images_per_prompt=4
+            prompt = PROMPT,
+            negative_prompt = NEGATIVE_PROMPT,
+            height = image.height,
+            width = image.width,
+            image = image,
+            num_inference_steps = 35,
+            strength = 0.4
         )
-        return output.images
-    
-    def restore_face(self, image: Image.Image) -> Image.Image:
-        img_array = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        restored_array = face_restoration(
-            img_array,
-            background_enhance=True,
-            face_upsample=True,
-            upscale=2,
-            codeformer_fidelity=0.5,
-            upsampler=self.upsampler,
-            codeformer_net=self.codeformer_net,
-            device=self.device
-        )
-        return Image.fromarray(restored_array)
 
-    def __call__(self) -> list[Image.Image]:
-        base_face = self.generateFace()
-        poses = self.generatePoses()
+        return output[0]
 
-        result_list = []
-
-        for pose in poses:
-            result = process([base_face], pose, -1, -1, INSWAPPER_PATH)
-            restored_result = self.restore_face(result)
-            result_list.append(restored_result)
-
-        return result_list
+    def __call__(self, image: Image.Image) -> Image.Image:
+        image = correction(image) # pose
+        regenerated_pose = self.generatePose(image),
+        refined_pose = self.refineImage(regenerated_pose)
+        return refined_pose
 
 def main():
+    image_in = Image.open("tinder.jpg")
     pipeline = EndpointOnePipeline()
-    results = pipeline()
+    results = pipeline(image_in)
 
 if __name__ == "__main__":
     main()
