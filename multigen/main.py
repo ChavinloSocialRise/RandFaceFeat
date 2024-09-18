@@ -10,9 +10,6 @@ from controlnet_aux import OpenposeDetector
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from inswapper.swapper import *
-from inswapper.restoration import *
-
 # PARAMETERS
 
 #FACE_PROMPT = "instagram photo, portrait photo of a 20 y.o girl, perfect face, natural skin, looking to the camera"
