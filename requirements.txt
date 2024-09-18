@@ -5,7 +5,8 @@ protobuf==5.28.0
 diffusers==0.30.2
 torchsde
 runpod
-
+opencv-python
+controlnet-aux
 
 torch
 torchvision
